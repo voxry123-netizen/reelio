@@ -29,7 +29,7 @@ export default function LoginPage() {
             onClick={async () => {
               setLoading(true);
               try {
-                await apiPost("/auth/login", { email, password });
+                await apiPost("/api/auth/login", { email, password });
                 await refreshMe();
                 push("success", "Logged in", "Your Reelio session is active.");
                 router.push("/feed/home");
