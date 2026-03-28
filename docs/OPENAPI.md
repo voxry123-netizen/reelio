@@ -1,0 +1,2 @@
+# OpenAPI
+Swagger at /docs.
