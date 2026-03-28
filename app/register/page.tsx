@@ -31,7 +31,7 @@ export default function RegisterPage() {
             onClick={async () => {
               setLoading(true);
               try {
-                await apiPost("/auth/register", { email, username, password });
+                await apiPost("/api/auth/register", { email, username, password });
                 await refreshMe();
                 push("success", "Account created", "You are now logged in.");
                 router.push("/feed/home");
