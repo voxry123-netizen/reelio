@@ -82,3 +82,9 @@ export function absoluteAssetUrl(url?: string | null) {
   if (url.startsWith("/")) return `${API_BASE}${url}`;
   return `${API_BASE}/${url.replace(/^\/+/, "")}`;
 }
+export async function translateText(text: string, targetLanguage: string) {
+  return apiPost("/translate", {
+    text,
+    targetLanguage,
+  });
+}
