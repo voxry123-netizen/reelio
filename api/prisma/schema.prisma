@@ -1,0 +1,350 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String   @id @default(uuid())
+  email           String   @unique
+  username        String   @unique
+  displayName     String?
+  passwordHash    String
+  bio             String?
+  avatarUrl       String?
+  isVerified      Boolean  @default(false)
+  mfaEnabled      Boolean  @default(false)
+  shadowbanned    Boolean  @default(false)
+  shadowbanReason String?
+  identityScore   Int      @default(0)
+  reputationScore Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  posts           Post[]   @relation("AuthorPosts")
+  refreshTokens   RefreshToken[]
+  realmMembers    RealmMember[]
+  notifications   Notification[]
+  following       Follow[] @relation("Following")
+  followers       Follow[] @relation("Followers")
+  subscriptionsAsCreator Subscription[] @relation("CreatorSubs")
+  subscriptionsAsSubscriber Subscription[] @relation("SubscriberSubs")
+  tipsSent        Tip[] @relation("TipFrom")
+  tipsReceived    Tip[] @relation("TipTo")
+  marketplaceItems MarketplaceItem[]
+  marketplaceOrders MarketplaceOrder[]
+  adCampaigns     AdCampaign[]
+  memoryEvents    MemoryEvent[]
+  dataExports     DataExport[]
+  postViews       PostView[]
+    // Opposite relation fields (required by Prisma)
+  mfaSecret       MfaSecret?
+  ownedRealms     Realm[]         @relation("UserOwnedRealms")
+  likes           Like[]
+  comments        Comment[]       @relation("UserComments")
+  conversationMemberships ConversationMember[]
+  messages        Message[]
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  tokenHash String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  revokedAt DateTime?
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+}
+
+model MfaSecret {
+  userId          String  @id
+  secretEncrypted String
+  backupCodesHash String
+  createdAt       DateTime @default(now())
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Realm {
+  id               String   @id @default(uuid())
+  slug             String   @unique
+  name             String
+  description      String?
+  avatarUrl        String?
+  ownerUserId      String
+  rulesJson        Json     @default("{}")
+  monetizationJson Json     @default("{}")
+  createdAt        DateTime @default(now())
+
+  owner   User         @relation("UserOwnedRealms", fields: [ownerUserId], references: [id])
+  members RealmMember[]
+  posts   Post[]
+  @@index([ownerUserId])
+}
+
+model RealmMember {
+  realmId   String
+  userId    String
+  role      String
+  createdAt DateTime @default(now())
+  realm Realm @relation(fields: [realmId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@id([realmId, userId])
+  @@index([userId])
+}
+
+model Post {
+  id         String   @id @default(uuid())
+  realmId    String?
+  authorId   String
+  title      String
+  caption    String?
+  visibility String   @default("public")
+  status     String   @default("published")
+  scheduledAt DateTime?
+  timeCapsuleRevealAt DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  realm   Realm? @relation(fields: [realmId], references: [id], onDelete: SetNull)
+  author  User   @relation("AuthorPosts", fields: [authorId], references: [id], onDelete: Cascade)
+  media   Media[]
+  comments Comment[]
+  likes   Like[]
+  views   PostView[]
+  collabsA Collab[] @relation("CollabA")
+  collabsB Collab[] @relation("CollabB")
+
+  @@index([createdAt])
+  @@index([realmId, createdAt])
+  @@index([authorId, createdAt])
+  tips Tip[]
+}
+
+model Media {
+  id                 String   @id @default(uuid())
+  postId             String
+  storageKeyOriginal String
+  durationSec        Int?
+  width              Int?
+  height             Int?
+  codec              String?
+  sizeBytes          Int?
+  createdAt          DateTime @default(now())
+
+  post       Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  renditions MediaRendition[]
+  @@index([postId])
+}
+
+model MediaRendition {
+  id         String   @id @default(uuid())
+  mediaId    String
+  storageKey String
+  bitrate    Int?
+  width      Int?
+  height     Int?
+  createdAt  DateTime @default(now())
+  media Media @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+  @@index([mediaId])
+}
+
+model Like {
+  userId    String
+  postId    String
+  reaction  String   @default("like")
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  @@id([userId, postId])
+  @@index([postId])
+}
+
+model Comment {
+  id        String   @id @default(uuid())
+  postId    String
+  authorId  String
+  parentId  String?
+  body      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  post   Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author User @relation("UserComments", fields: [authorId], references: [id], onDelete: Cascade)
+  parent Comment? @relation("CommentTree", fields: [parentId], references: [id], onDelete: SetNull)
+  replies Comment[] @relation("CommentTree")
+  @@index([postId, createdAt])
+}
+
+model Follow {
+  followerId  String
+  followingId String
+  createdAt DateTime @default(now())
+  follower User @relation("Following", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("Followers", fields: [followingId], references: [id], onDelete: Cascade)
+  @@id([followerId, followingId])
+  @@index([followingId])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  type      String
+  payloadJson Json
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, createdAt])
+}
+
+model Subscription {
+  id           String   @id @default(uuid())
+  creatorId    String
+  subscriberId String
+  tier         String
+  priceCents   Int
+  status       String
+  startedAt    DateTime @default(now())
+  endsAt       DateTime?
+  creator    User @relation("CreatorSubs", fields: [creatorId], references: [id], onDelete: Cascade)
+  subscriber User @relation("SubscriberSubs", fields: [subscriberId], references: [id], onDelete: Cascade)
+  @@index([creatorId])
+  @@index([subscriberId])
+}
+
+model Tip {
+  id          String   @id @default(uuid())
+  fromUserId  String
+  toUserId    String
+  postId      String?
+  amountCents Int
+  createdAt   DateTime @default(now())
+  fromUser User @relation("TipFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser   User @relation("TipTo", fields: [toUserId], references: [id], onDelete: Cascade)
+  post     Post? @relation(fields: [postId], references: [id], onDelete: SetNull)
+  @@index([toUserId, createdAt])
+}
+
+model MarketplaceItem {
+  id          String   @id @default(uuid())
+  creatorId   String
+  type        String
+  title       String
+  description String?
+  priceCents  Int
+  assetKey    String?
+  createdAt   DateTime @default(now())
+  creator User @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  orders MarketplaceOrder[]
+  @@index([creatorId, createdAt])
+}
+
+model MarketplaceOrder {
+  id        String   @id @default(uuid())
+  buyerId   String
+  itemId    String
+  status    String
+  createdAt DateTime @default(now())
+  buyer User @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  item  MarketplaceItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  @@index([buyerId, createdAt])
+}
+
+model AdCampaign {
+  id              String   @id @default(uuid())
+  advertiserUserId String
+  name            String
+  targetingJson   Json
+  budgetCents     Int
+  status          String
+  createdAt       DateTime @default(now())
+  advertiser User @relation(fields: [advertiserUserId], references: [id], onDelete: Cascade)
+  @@index([advertiserUserId, createdAt])
+}
+
+model PostView {
+  id        String   @id @default(uuid())
+  postId    String
+  userId    String?
+  sessionId String
+  watchMs   Int
+  createdAt DateTime @default(now())
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  @@index([postId, createdAt])
+  @@index([userId, createdAt])
+}
+
+model Collab {
+  id       String @id @default(uuid())
+  postIdA  String
+  postIdB  String
+  mode     String
+  createdAt DateTime @default(now())
+  postA Post @relation("CollabA", fields: [postIdA], references: [id], onDelete: Cascade)
+  postB Post @relation("CollabB", fields: [postIdB], references: [id], onDelete: Cascade)
+  @@index([postIdA])
+  @@index([postIdB])
+}
+
+model MemoryEvent {
+  id        String   @id @default(uuid())
+  userId    String
+  type      String
+  refId     String?
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, createdAt])
+}
+
+model DataExport {
+  id          String   @id @default(uuid())
+  userId      String
+  status      String
+  storageKey  String?
+  createdAt   DateTime @default(now())
+  completedAt DateTime?
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, createdAt])
+}
+
+
+model Conversation {
+  id        String   @id @default(uuid())
+  title     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members  ConversationMember[]
+  messages Message[]
+}
+
+model ConversationMember {
+  conversationId String
+  userId         String
+  createdAt      DateTime @default(now())
+  lastReadAt     DateTime?
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([conversationId, userId])
+  @@index([userId, createdAt])
+}
+
+model Message {
+  id             String   @id @default(uuid())
+  conversationId String
+  authorId       String
+  body           String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  author       User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@index([authorId, createdAt])
+}
